@@ -1,5 +1,6 @@
 #!/usr/bin/perl
 # Copyright (c) 2011, Distilled Media Ltd.
+# Copyright (c) 2013, LeChat Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -23,18 +24,17 @@
 # ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 
-# 
-# This script converts Munin alerts into messages in a HipChat room.
+#
+# This script converts Munin alerts into messages in a Kato room.
 #
 # Put this script somewhere on your Munin master and make it executable. Then
 # add it as a contact in your Munin configuration like so:
 #
-# contact.hipchat.command | <THIS> <THIS> --room=<ROOM> --token=<TOKEN>
-# contact.hipchat.always_send warning critical
+# contact.kato.command [THIS] --kato_url=[KATO_URL]
+# contact.kato.always_send warning critical
 #
-# Replace <THIS> with the full path to this script (yes, it is supposed to be
-# there twice). Replace <ROOM> with the name or ID of the room where you want
-# the messages to arrive and replace <TOKEN> with your HipChat token.
+# Replace [THIS] with the full path to this script. Replace [KATO_URL] with url
+# provided in integrations tab in your room setttings.
 #
 # Don't forget to add it to your contacts list.
 #
@@ -52,26 +52,24 @@ use HTTP::Request::Common qw(POST);
 use LWP::UserAgent;
 
 # Command line arguments
-my $HIPCHAT_FROM = 'Munin';
-my $HIPCHAT_ROOM = '';
-my $HIPCHAT_TOKEN = '';
+my $KATO_FROM = 'Munin';
+my $KATO_URL = '';
 my $MUNIN_URL_PREFIX = '';
 
 # Fetch the command line arguments
 &usage unless GetOptions(
-	'from=s' => \$HIPCHAT_FROM,
-	'room=s' => \$HIPCHAT_ROOM,
-	'token=s' => \$HIPCHAT_TOKEN,
+	'from=s' => \$KATO_FROM,
+	'kato_url=s' => \$KATO_URL,
 	'munin-prefix=s' => \$MUNIN_URL_PREFIX
 );
 
 # Enforce the mandatory arguments
-&usage unless ($HIPCHAT_ROOM && $HIPCHAT_TOKEN);
+&usage unless $KATO_URL;
 
-# A bodge to allow "special" characters in the -from and --room parameters
+# A bodge to allow "special" characters in the -from and --kato_url parameters
 # since it appears to be impossible to pass them safely from munin.conf.
-$HIPCHAT_FROM =~ s/\%([A-Fa-f0-9]{2})/pack('C', hex($1))/seg;
-$HIPCHAT_ROOM =~ s/\%([A-Fa-f0-9]{2})/pack('C', hex($1))/seg;
+$KATO_FROM =~ s/\%([A-Fa-f0-9]{2})/pack('C', hex($1))/seg;
+$KATO_URL =~ s/\%([A-Fa-f0-9]{2})/pack('C', hex($1))/seg;
 
 # Read the data from Munin
 my $alert_data = '';
@@ -82,14 +80,14 @@ while (<STDIN>) {
 # Parse the alerts and send messages about them.
 my @alerts = split /(?:\r\n|\r|\n){2}/o, $alert_data;
 if (@alerts) {
-	my $hipchat = new LWP::UserAgent();
+	my $kato = new LWP::UserAgent();
 	foreach (@alerts) {
-		&send_to_hipchat($hipchat, &format_for_hipchat($_));
+		&send_to_kato($kato, &format_for_kato($_));
 	}
 }
 
-# Format an alert for HipChat
-sub format_for_hipchat {
+# Format an alert for Kato
+sub format_for_kato {
 	# Encode the basic entities and then split for processing
 	my @alert = split /(?:\r\n|\r|\n)/o, encode_entities(shift);
 
@@ -146,21 +144,19 @@ sub format_for_hipchat {
 	};
 }
 
-# Send an alert as a message to a HipChat room
-sub send_to_hipchat {
-	my $hipchat = shift;
+# Send an alert as a message to a Kato room
+sub send_to_kato {
+	my $kato = shift;
 	my $alert = shift;
 
-	$alert->{'room_id'} = $HIPCHAT_ROOM;
-	$alert->{'from'} = $HIPCHAT_FROM;
-	$alert->{'notify'} = 1;
+	$alert->{'from'} = $KATO_FROM;
 
-	my $req = POST "https://api.hipchat.com/v1/rooms/message?format=json&auth_token=$HIPCHAT_TOKEN", $alert;
-	$hipchat->request($req);
+	my $req = POST $KATO_URL, $alert;
+	$kato->request($req);
 }
 
 # Print out a usage message.
 sub usage {
-	print "Usage: $0 [--from=Munin] --room=Room --token=1234abcd [--munin-prefix=https://munin.foo.com]\n";
+	print "Usage: $0 [--from=Munin] --kato_url=https://api.kato.im/1234abcd [--munin-prefix=https://munin.example.com]\n";
 	exit(0);
 }
